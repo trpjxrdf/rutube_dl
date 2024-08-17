@@ -137,11 +137,12 @@ class RutubeDl:
 
     def download_to_stream(self, fmt, writer):
         link = self.get_download_url(fmt)
-        for mp4, ts in self.get_segments(fmt):
-            req = self._get_with_retries(f'{link}/{ts}')
+        sl = [ts for mp4, ts in self.get_segments(fmt)]
+        for i in range(0, len(sl)):
+            req = self._get_with_retries(f'{link}/{sl[i]}')
             req.raise_for_status()
             writer(req.content)
-            yield ts, len(req.content)
+            yield i+1, len(sl), sl[i], len(req.content)
 
     def download_to_file(self, fmt, file_name:str):
         with open(file_name, 'wb') as f:
@@ -169,9 +170,6 @@ if __name__ == '__main__':
     dl = RutubeDl(video_id)
 
     fmts = dl.list_formats()
-
-    for fmt in fmts:
-        print(fmt)
 
     fmt = fmts[0] # worst quality
 
