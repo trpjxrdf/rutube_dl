@@ -121,6 +121,20 @@ class RutubeDl:
             raise Exception(f'url must ends with .m3u8: {url}')
         return url[0:-5]
 
+    def get_segment_list(self, fmt):
+        req = self._get_with_retries(fmt['url'])
+        req.raise_for_status()
+        lines = req.content.decode().split('\n')
+        i = 0
+        while i < len(lines):
+            while i < len(lines) and not lines[i].startswith('#EXTINF:'):
+                i += 1
+            if i >= len(lines) - 1:
+                break
+            info = lines[i+1].strip()
+            i += 2
+            yield tuple(info.split("/"))
+
     def _download_to_stream_2(self, fmt, writer):
         link = self.get_download_url(fmt)
         #count = self.get_segment_count(fmt)
@@ -137,7 +151,7 @@ class RutubeDl:
 
     def download_to_stream(self, fmt, writer):
         link = self.get_download_url(fmt)
-        sl = [ts for mp4, ts in self.get_segments(fmt)]
+        sl = [ts for mp4, ts in self.get_segment_list(fmt)]
         for i in range(0, len(sl)):
             req = self._get_with_retries(f'{link}/{sl[i]}')
             req.raise_for_status()
@@ -148,20 +162,6 @@ class RutubeDl:
         with open(file_name, 'wb') as f:
             for s in self.download_to_stream(fmt, f.write):
                 yield s
-
-    def get_segments(self, fmt):
-        req = self._get_with_retries(fmt['url'])
-        req.raise_for_status()
-        lines = req.content.decode().split('\n')
-        i = 0
-        while i < len(lines):
-            while i < len(lines) and not lines[i].startswith('#EXTINF:'):
-                i += 1
-            if i >= len(lines) - 1:
-                break
-            info = lines[i+1].strip()
-            i += 2
-            yield tuple(info.split("/"))
 
 if __name__ == '__main__':
 
