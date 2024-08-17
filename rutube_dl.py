@@ -27,19 +27,18 @@ class RutubeDl:
         req.raise_for_status()
 
         self.info = req.json()
-        video_author = self.info['author']['name']
-        video_title = self.info['title']
-        dict_repl = ["/", "\\", "[", "]", "?", "'", '"', ":", "."]
-        for repl in dict_repl:
-            if repl in video_title:
-                video_title = video_title.replace(repl, "")
-            if repl in video_author:
-                video_author = video_author.replace(repl, "")
-        self.video_title = video_title.replace(" ", "_")
-        self.video_author = video_author.replace(" ", "_")
         self.video_url = self.info['video_balancer']['m3u8']
 
-    def parse_codec_info(self, info):
+        self.info.pop('advert')
+        self.info.pop('stat')
+        self.info.pop('appearance')
+
+        self.video_author = self.info['author']
+        self.video_title = self.info['title']
+        self.video_description = self.info['description']
+        self.video_thumbnail_url = self.info['thumbnail_url']
+
+    def _parse_codec_info(self, info):
         res = {}
         i = 0
         while i < len(info):
@@ -105,7 +104,7 @@ class RutubeDl:
                 raise Exception(f'"{token}" is not found')
             link_url = lines[i]
             i += 1
-            d = self.parse_codec_info(codec_info[18:])
+            d = self._parse_codec_info(codec_info[18:])
             d['url'] = link_url
             res.append(d)
 
@@ -122,31 +121,11 @@ class RutubeDl:
             raise Exception(f'url must ends with .m3u8: {url}')
         return url[0:-5]
 
-    def _load_segments(self, folder, fmt):
-        link = self.get_download_url(fmt)
-        #count = self.get_segment_count(fmt)
-        i = 1
-        with open(os.path.join(folder, 'merged.ts'), 'wb') as merged:
-            while True:
-                print(f'[+] - Загружаю сегмент {i}')
-                segment_name = f'segment-{i}-v1-a1.ts'
-                req = self._get_with_retries(f'{link}/{segment_name}')
-                if req.status_code == 404:
-                    break
-                req.raise_for_status()
-                with open(os.path.join(folder, segment_name), 'wb') as file:
-                    file.write(req.content)
-                merged.write(req.content)
-                i += 1
-                yield segment_name
-        print('[INFO] - Все сегменты загружены')
-
-    def download_to_stream(self, fmt, writer):
+    def _download_to_stream_2(self, fmt, writer):
         link = self.get_download_url(fmt)
         #count = self.get_segment_count(fmt)
         i = 1
         while True:
-#           print(f'[+] - Загружаю сегмент {i}')
             segment_name = f'segment-{i}-v1-a1.ts'
             req = self._get_with_retries(f'{link}/{segment_name}')
             if req.status_code == 404:
@@ -155,21 +134,33 @@ class RutubeDl:
             writer(req.content)
             i += 1
             yield segment_name, len(req.content)
-#        print('[INFO] - Все сегменты загружены')
+
+    def download_to_stream(self, fmt, writer):
+        link = self.get_download_url(fmt)
+        for mp4, ts in self.get_segments(fmt):
+            req = self._get_with_retries(f'{link}/{ts}')
+            req.raise_for_status()
+            writer(req.content)
+            yield ts, len(req.content)
 
     def download_to_file(self, fmt, file_name:str):
         with open(file_name, 'wb') as f:
             for s in self.download_to_stream(fmt, f.write):
                 yield s
 
-    def get_segment_count(self, fmt):
+    def get_segments(self, fmt):
         req = self._get_with_retries(fmt['url'])
         req.raise_for_status()
-        data_seg_dict = []
-        for seg in req:
-            data_seg_dict.append(seg)
-        seg_count = str(data_seg_dict[-2]).split("/")[-1].split("-")[1]
-        return seg_count
+        lines = req.content.decode().split('\n')
+        i = 0
+        while i < len(lines):
+            while i < len(lines) and not lines[i].startswith('#EXTINF:'):
+                i += 1
+            if i >= len(lines) - 1:
+                break
+            info = lines[i+1].strip()
+            i += 2
+            yield tuple(info.split("/"))
 
 if __name__ == '__main__':
 
@@ -178,6 +169,10 @@ if __name__ == '__main__':
     dl = RutubeDl(video_id)
 
     fmts = dl.list_formats()
+
+    for fmt in fmts:
+        print(fmt)
+
     fmt = fmts[0] # worst quality
 
     folder = 'D:\\5'
