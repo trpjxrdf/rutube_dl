@@ -110,18 +110,7 @@ class RutubeDl:
 
         return res
 
-    def get_download_url(self, fmt):
-        url = fmt['url']
-        i = len(url) - 1
-        while i >= 0 and url[i] != '?':
-            i -= 1
-        if i >= 0:
-            url = url[:i]
-        if not url.endswith('.m3u8'):
-            raise Exception(f'url must ends with .m3u8: {url}')
-        return url[0:-5]
-
-    def get_segment_list(self, fmt):
+    def list_segments(self, fmt):
         req = self._get_with_retries(fmt['url'])
         req.raise_for_status()
         lines = req.content.decode().split('\n')
@@ -134,6 +123,17 @@ class RutubeDl:
             info = lines[i+1].strip()
             i += 2
             yield tuple(info.split("/"))
+
+    def get_download_url(self, fmt):
+        url = fmt['url']
+        i = len(url) - 1
+        while i >= 0 and url[i] != '?':
+            i -= 1
+        if i >= 0:
+            url = url[:i]
+        if not url.endswith('.m3u8'):
+            raise Exception(f'url must ends with .m3u8: {url}')
+        return url[0:-5]
 
     def _download_to_stream_2(self, fmt, writer):
         link = self.get_download_url(fmt)
@@ -151,7 +151,7 @@ class RutubeDl:
 
     def download_to_stream(self, fmt, writer):
         link = self.get_download_url(fmt)
-        sl = [ts for mp4, ts in self.get_segment_list(fmt)]
+        sl = [ts for mp4, ts in self.list_segments(fmt)]
         for i in range(0, len(sl)):
             req = self._get_with_retries(f'{link}/{sl[i]}')
             req.raise_for_status()
